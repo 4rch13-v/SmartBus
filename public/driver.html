@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartBus Driver Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        const sysPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const savedTheme = localStorage.getItem('smartbus-theme') || (sysPrefersDark ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
+    <style>
+        :root {
+            --font-heading: 'Archivo', -apple-system, sans-serif;
+            --font-body: 'Inter', -apple-system, sans-serif;
+            --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+            --bg-page: #F7F6F3;
+            --bg-card: #FFFFFF;
+            --bg-elevated: #EFEDE7;
+            --border-subtle: rgba(20, 19, 15, 0.08);
+            --border-card: rgba(20, 19, 15, 0.14);
+            --shadow-card: 0 1px 2px rgba(20, 19, 15, 0.04), 0 4px 12px rgba(20, 19, 15, 0.06);
+
+            --color-primary: #B45309;       /* amber/ochre — accent, brand, interactive */
+            --color-primary-tint: #FEF3E2;  /* flat wash for hover/active */
+            --color-live: #15803D;          /* deep green — on-time / live vehicle */
+            --color-live-tint: #EAF4EC;
+            --color-warn: #B91C1C;          /* delayed / alert */
+            --color-warn-tint: #FDEAEA;
+
+            --text-main: #1C1917;
+            --text-muted: #6B6459;
+            --text-inv: #FFFFFF;
+
+            --space-1: 4px; --space-2: 8px; --space-3: 16px; --space-4: 24px; --space-5: 32px;
+            --radius-outer: 14px; --radius-inner: 10px; --radius-btn: 10px;
+            --transition: all 0.15s ease-in-out;
+            --header-height: 64px;
+        }
+
+        [data-theme="dark"] {
+            --bg-page: #121110;
+            --bg-card: #1B1917;
+            --bg-elevated: #242220;
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-card: rgba(255, 255, 255, 0.1);
+            --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.45);
+
+            --color-primary: #F59E0B;
+            --color-primary-tint: rgba(245, 158, 11, 0.14);
+            --color-live: #34D399;
+            --color-live-tint: rgba(52, 211, 153, 0.14);
+            --color-warn: #F87171;
+            --color-warn-tint: rgba(248, 113, 113, 0.14);
+
+            --text-main: #F5F3EF;
+            --text-muted: #A39C8F;
+        }
+
+        * { box-sizing: border-box; }
+        *:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--bg-page); color: var(--text-main);
+            margin: 0; padding: 0; min-height: 100vh;
+            display: flex; flex-direction: column;
+            line-height: 1.5;
+        }
+
+        h1, h2, h3, h4, .font-heading { font-family: var(--font-heading); margin: 0; letter-spacing: -0.01em; }
+
+        /* Sticky Glass Header */
+        .navbar {
+            height: var(--header-height); background: var(--bg-card);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-card);
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0 var(--space-4); position: sticky; top: 0; z-index: 1000; box-shadow: var(--shadow-card);
+        }
+
+        .brand { display: flex; align-items: center; gap: var(--space-2); }
+        .brand i { color: var(--color-primary); width: 26px; height: 26px; }
+        .brand h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+
+        .icon-btn {
+            background: var(--bg-elevated); border: 1px solid var(--border-card); color: var(--text-muted);
+            cursor: pointer; padding: var(--space-2); border-radius: var(--radius-inner);
+            display: flex; align-items: center; justify-content: center; transition: var(--transition);
+        }
+        .icon-btn:hover { background: var(--bg-card); color: var(--text-main); border-color: var(--color-primary); }
+        .icon-btn:active { transform: scale(0.96); }
+
+        /* Main Container */
+        .container { width: 100%; max-width: 460px; margin: 0 auto; padding: var(--space-5) var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
+
+        /* Flat Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-card); border-radius: var(--radius-outer);
+            box-shadow: var(--shadow-card); overflow: hidden;
+        }
+        .card-header { padding: var(--space-4); border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; gap: var(--space-2); }
+        .card-header h2 { font-size: 18px; font-weight: 700; }
+        .card-body { padding: var(--space-4); }
+
+        /* Step Indicator */
+        .step-indicator { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); }
+        .step { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); font-size: 12px; font-weight: 600; color: var(--text-muted); transition: var(--transition); }
+        .step.active { color: var(--color-primary); font-weight: 700; }
+        .step.completed { color: var(--text-main); font-weight: 700; }
+        .step-dot { width: 24px; height: 24px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border-card); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; font-family: var(--font-mono); transition: var(--transition); }
+        .step.active .step-dot { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+        .step.completed .step-dot { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+        .step-line { flex: 1; height: 2px; background: var(--border-subtle); margin: 0 var(--space-2); margin-bottom: 18px; transition: var(--transition); }
+        .step.completed + .step-line { background: var(--color-primary); }
+
+        .form-group { margin-bottom: var(--space-4); }
+        label { display: block; font-size: 12px; font-weight: 600; margin-bottom: var(--space-1); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+        .custom-select-wrapper { position: relative; width: 100%; }
+        .custom-select-wrapper i.select-icon { position: absolute; left: var(--space-3); top: 50%; transform: translateY(-50%); color: var(--text-muted); width: 18px; height: 18px; pointer-events: none; }
+        .custom-select-wrapper i.select-arrow { position: absolute; right: var(--space-3); top: 50%; transform: translateY(-50%); color: var(--text-muted); width: 18px; height: 18px; pointer-events: none; }
+
+        input, select {
+            width: 100%; padding: 10px 14px 10px 40px;
+            background: var(--bg-elevated); color: var(--text-main);
+            border: 1px solid var(--border-card); border-radius: var(--radius-inner);
+            font-family: var(--font-body); font-size: 14px; font-weight: 500;
+            transition: var(--transition); appearance: none;
+        }
+        input:focus, select:focus { border-color: var(--color-primary); outline: none; box-shadow: 0 0 0 1px var(--color-primary); background: var(--bg-card); }
+        input[type="password"] { padding-left: 14px; font-family: var(--font-mono); letter-spacing: 0.1em; }
+
+        /* Buttons */
+        .btn {
+            width: 100%; padding: 12px var(--space-4); border-radius: var(--radius-btn);
+            font-family: var(--font-body); font-weight: 600; font-size: 14px;
+            transition: var(--transition); border: 1px solid transparent; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: var(--space-2);
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+        .btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--color-primary) 88%, black); transform: translateY(-1px); box-shadow: var(--shadow-card); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+        .btn-start { background: var(--color-live); color: #fff; border-color: var(--color-live); }
+        .btn-start:hover { background: color-mix(in srgb, var(--color-live) 88%, black); transform: translateY(-1px); box-shadow: var(--shadow-card); }
+        .btn-stop { background: var(--color-warn); color: #fff; border-color: var(--color-warn); display: none; }
+        .btn-stop:hover { background: color-mix(in srgb, var(--color-warn) 88%, black); transform: translateY(-1px); box-shadow: var(--shadow-card); }
+
+        #errorText {
+            color: var(--color-warn); font-size: 13px; font-weight: 500;
+            text-align: center; margin-top: var(--space-3); display: none; padding: 10px;
+            background: var(--color-warn-tint); border-radius: var(--radius-inner);
+            border: 1px solid var(--color-warn);
+        }
+
+        /* Departure Board Style Stats Grid */
+        .stats-grid { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4); }
+        .stat-box { background: var(--bg-elevated); border: 1px solid var(--border-subtle); padding: 10px var(--space-4); border-radius: var(--radius-inner); display: flex; justify-content: space-between; align-items: center; }
+        .stat-label { color: var(--text-muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+        .stat-value {
+            color: var(--text-main); font-size: 14px; font-weight: 600;
+            font-family: var(--font-mono); font-feature-settings: "tnum";
+        }
+
+        #dashboardView { display: none; }
+        @keyframes skeleton-pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        .skeleton { background: var(--border-subtle); border-radius: var(--radius-inner); animation: skeleton-pulse 1.5s infinite ease-in-out; }
+        .skeleton-input { height: 42px; width: 100%; }
+    </style>
+</head>
+<body>
+    <header class="navbar">
+        <div class="brand">
+            <i data-lucide="steering-wheel"></i>
+            <h1>Driver Console</h1>
+        </div>
+        <button id="themeToggle" class="icon-btn" aria-label="Toggle Theme">
+            <i id="themeIcon" data-lucide="moon"></i>
+        </button>
+    </header>
+
+    <div class="container">
+        <!-- Step 1 & 2: Auth / Setup -->
+        <div class="card" id="loginView">
+            <div class="card-body">
+                <div class="step-indicator">
+                    <div class="step active" id="step1"><div class="step-dot">1</div> PIN</div>
+                    <div class="step-line" id="line1"></div>
+                    <div class="step" id="step2"><div class="step-dot">2</div> ROUTE</div>
+                    <div class="step-line" id="line2"></div>
+                    <div class="step" id="step3"><div class="step-dot">3</div> CONNECT</div>
+                </div>
+
+                <div class="form-group">
+                    <label>Operator PIN</label>
+                    <input type="password" id="driverPin" placeholder="Enter secure PIN code">
+                </div>
+
+                <div id="route-selector-container">
+                    <div class="form-group" id="route-skeleton">
+                        <label>Assigned Route</label>
+                        <div class="skeleton skeleton-input"></div>
+                    </div>
+
+                    <div id="route-controls" style="display: none;">
+                        <div class="form-group">
+                            <label>Assigned City</label>
+                            <div class="custom-select-wrapper">
+                                <i data-lucide="map-pin" class="select-icon"></i>
+                                <select id="citySelect">
+                                    <option value="" disabled selected>Select your city</option>
+                                    <option value="indore">Indore</option>
+                                    <option value="bhopal">Bhopal</option>
+                                    <option value="ujjain">Ujjain</option>
+                                    <option value="jabalpur">Jabalpur</option>
+                                </select>
+                                <i data-lucide="chevron-down" class="select-arrow"></i>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Assigned Route</label>
+                            <div class="custom-select-wrapper">
+                                <i data-lucide="route" class="select-icon"></i>
+                                <select id="routeSelect" disabled>
+                                    <option value="" disabled selected>Select city first</option>
+                                </select>
+                                <i data-lucide="chevron-down" class="select-arrow"></i>
+                            </div>
+                        </div>
+
+                        <!-- Vehicle Metadata -->
+                        <div class="stat-box" id="vehicleMetaBox" style="display:none; margin-bottom: var(--space-3);">
+                            <span class="stat-label">Vehicle Info</span>
+                            <span class="stat-value" id="driverVehicleMeta" style="color: var(--color-primary);">Bus -- • Plate --</span>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Assigned Vehicle ID</label>
+                            <div class="custom-select-wrapper">
+                                <i data-lucide="bus" class="select-icon"></i>
+                                <select id="busSelect">
+                                    <option value="BUS-101">Vehicle BUS-101</option>
+                                    <option value="BUS-102">Vehicle BUS-102</option>
+                                    <option value="BUS-103">Vehicle BUS-103</option>
+                                </select>
+                                <i data-lucide="chevron-down" class="select-arrow"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="loginBtn" class="btn btn-primary" disabled><i data-lucide="log-in"></i> Initialize Session</button>
+                <div id="errorText">Authentication failed. Please verify your PIN.</div>
+            </div>
+        </div>
+
+        <!-- Step 3: Dashboard -->
+        <div class="card" id="dashboardView">
+            <div class="card-header" style="justify-content: center; border-bottom: none; padding-bottom: 0;">
+                <h2 id="activeRouteText" class="font-heading" style="font-size: 22px; color: var(--text-main);">Route / Bus</h2>
+            </div>
+
+            <div class="card-body">
+                <button id="startBtn" class="btn btn-start">
+                    <i data-lucide="power"></i> Engage GPS Telemetry
+                </button>
+                <button id="stopBtn" class="btn btn-stop">
+                    <i data-lucide="stop-circle"></i> Terminate Telemetry
+                </button>
+
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <span class="stat-label">Vehicle Info</span>
+                        <span class="stat-value" id="dashVehicleInfo" style="color: var(--color-primary);">--</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">System Status</span>
+                        <span class="stat-value" id="statusText" style="color: var(--text-muted);">Inactive</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">Coordinates</span>
+                        <span class="stat-value" id="locText">--</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">GPS Variance</span>
+                        <span class="stat-value" id="accText">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        lucide.createIcons();
+
+        const themeToggle = document.getElementById('themeToggle');
+
+        function updateThemeIcon(theme) {
+            themeToggle.innerHTML = theme === 'dark' ? '<i data-lucide="sun"></i>' : '<i data-lucide="moon"></i>';
+            lucide.createIcons();
+        }
+        updateThemeIcon(document.documentElement.getAttribute('data-theme'));
+
+        themeToggle.addEventListener('click', () => {
+            let theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('smartbus-theme', theme);
+            updateThemeIcon(theme);
+        });
+
+        const socket = io();
+        let watchId = null;
+        let gpsInterval = null;
+        let lastPosition = null;
+        let wakeLock = null;
+
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                }
+            } catch (err) {
+                console.log(`Wake Lock error: ${err.name}, ${err.message}`);
+            }
+        }
+
+        const loginView = document.getElementById('loginView');
+        const driverPin = document.getElementById('driverPin');
+        const citySelect = document.getElementById('citySelect');
+        const routeSelect = document.getElementById('routeSelect');
+        const busSelect = document.getElementById('busSelect');
+        const loginBtn = document.getElementById('loginBtn');
+        const errorText = document.getElementById('errorText');
+
+        const dashboardView = document.getElementById('dashboardView');
+        const activeRouteText = document.getElementById('activeRouteText');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+
+        const locText = document.getElementById('locText');
+        const accText = document.getElementById('accText');
+        const statusText = document.getElementById('statusText');
+
+        let activeRouteId = '';
+        let activeBusId = '';
+        let activeBusNo = '';
+        let activePlateNo = '';
+        let allRoutesData = [];
+
+        const driverVehicleMeta = document.getElementById('driverVehicleMeta');
+        const vehicleMetaBox    = document.getElementById('vehicleMetaBox');
+        const dashVehicleInfo   = document.getElementById('dashVehicleInfo');
+
+        function populateRoutes(cityId) {
+            const cityRoutes = allRoutesData.filter(r => r.cityId === cityId);
+            routeSelect.innerHTML = '';
+            vehicleMetaBox.style.display = 'none';
+            driverVehicleMeta.textContent = 'Bus -- • Plate --';
+            if (cityRoutes.length === 0) {
+                const opt = document.createElement('option');
+                opt.disabled = true; opt.selected = true;
+                opt.textContent = 'No routes available for this city';
+                routeSelect.appendChild(opt);
+                routeSelect.disabled = true;
+            } else {
+                const placeholder = document.createElement('option');
+                placeholder.value = ''; placeholder.disabled = true; placeholder.selected = true;
+                placeholder.textContent = 'Select assigned route';
+                routeSelect.appendChild(placeholder);
+                cityRoutes.forEach(route => {
+                    const opt = document.createElement('option');
+                    opt.value = route.id;
+                    opt.textContent = `${route.id}: ${route.name}`;
+                    routeSelect.appendChild(opt);
+                });
+                routeSelect.disabled = false;
+            }
+        }
+
+        citySelect.addEventListener('change', () => {
+            populateRoutes(citySelect.value);
+            loginBtn.disabled = true;
+        });
+
+        routeSelect.addEventListener('change', () => {
+            loginBtn.disabled = !(citySelect.value && routeSelect.value);
+            const selectedRoute = allRoutesData.find(r => r.id === routeSelect.value);
+            if (selectedRoute && selectedRoute.busNo) {
+                driverVehicleMeta.textContent = `Bus ${selectedRoute.busNo} • ${selectedRoute.plateNo || '--'}`;
+                vehicleMetaBox.style.display = 'flex';
+            } else {
+                vehicleMetaBox.style.display = 'none';
+            }
+        });
+
+        socket.on('initData', (routesData) => {
+            allRoutesData = routesData;
+            document.getElementById('route-skeleton').style.display = 'none';
+            document.getElementById('route-controls').style.display = 'block';
+            loginBtn.disabled = true;
+            lucide.createIcons();
+            document.getElementById('step1').classList.add('completed');
+            document.getElementById('line1').classList.add('completed');
+            document.getElementById('step2').classList.add('active');
+        });
+
+        loginBtn.addEventListener('click', () => {
+            const pin = driverPin.value.trim();
+            if (!pin || !citySelect.value || !routeSelect.value) return;
+
+            activeRouteId = routeSelect.value;
+            activeBusId = busSelect.value;
+
+            const selectedRoute = allRoutesData.find(r => r.id === activeRouteId);
+            activeBusNo   = selectedRoute ? (selectedRoute.busNo   || '') : '';
+            activePlateNo = selectedRoute ? (selectedRoute.plateNo || '') : '';
+
+            loginBtn.innerHTML = '<i data-lucide="loader" class="animate-spin"></i> Verifying...';
+            lucide.createIcons();
+            socket.emit('authenticateDriver', { routeId: activeRouteId, busId: activeBusId, driverPin: pin });
+        });
+
+        socket.on('authSuccess', () => {
+            loginView.style.display = 'none';
+            dashboardView.style.display = 'block';
+            const cityName = citySelect.options[citySelect.selectedIndex].text;
+            activeRouteText.textContent = `${cityName} • ${activeRouteId}`;
+            dashVehicleInfo.textContent = activeBusNo
+                ? `Bus ${activeBusNo} • ${activePlateNo}`
+                : activeBusId;
+        });
+
+        socket.on('authFailed', (data) => {
+            loginBtn.innerHTML = '<i data-lucide="log-in"></i> Initialize Session';
+            lucide.createIcons();
+            errorText.textContent = data.message || 'Authentication failed.';
+            errorText.style.display = 'block';
+        });
+
+        function sendLocation() {
+            if (!lastPosition) return;
+            const { latitude, longitude, speed, heading, accuracy } = lastPosition.coords;
+
+            socket.emit('driverLocationUpdate', {
+                routeId: activeRouteId,
+                busId: activeBusId,
+                busNo: activeBusNo,
+                plateNo: activePlateNo,
+                lat: latitude, lng: longitude,
+                speed: speed, heading: heading, accuracy: accuracy
+            });
+
+            statusText.textContent = 'Active Telemetry';
+            statusText.style.color = 'var(--color-live)';
+            locText.textContent = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+            accText.textContent = `±${Math.round(accuracy)}m`;
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert('Hardware telemetry not supported.');
+                return;
+            }
+
+            startBtn.style.display = 'none';
+            stopBtn.style.display = 'flex';
+
+            statusText.textContent = 'Synchronizing...';
+            statusText.style.color = 'var(--color-warn)';
+
+            requestWakeLock();
+
+            navigator.geolocation.getCurrentPosition(
+                (pos) => { lastPosition = pos; sendLocation(); },
+                (error) => { console.error(error); },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+
+            watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    lastPosition = position;
+                    sendLocation();
+                },
+                (error) => {
+                    console.error(error);
+                    statusText.textContent = `Error: ${error.message}`;
+                    statusText.style.color = 'var(--color-warn)';
+                },
+                { enableHighAccuracy: true, timeout: 15000 }
+            );
+
+            gpsInterval = setInterval(sendLocation, 3000);
+        });
+
+        function stopDuty() {
+            if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+            if (gpsInterval !== null) { clearInterval(gpsInterval); gpsInterval = null; }
+            if (wakeLock !== null) { wakeLock.release().then(() => wakeLock = null); }
+            lastPosition = null;
+
+            socket.emit('driverStopDuty');
+
+            startBtn.style.display = 'flex';
+            stopBtn.style.display = 'none';
+
+            statusText.textContent = 'Inactive';
+            statusText.style.color = 'var(--text-muted)';
+
+            locText.textContent = '--';
+            accText.textContent = '--';
+        }
+
+        stopBtn.addEventListener('click', stopDuty);
+
+        window.addEventListener('beforeunload', () => {
+            if (watchId !== null || gpsInterval !== null) socket.emit('driverStopDuty');
+        });
+    </script>
+</body>
+</html>

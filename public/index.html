@@ -1,1 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartBus Transit Tracking</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        const sysPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const savedTheme = localStorage.getItem('smartbus-theme') || (sysPrefersDark ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
+    <style>
+        :root {
+            --font-heading: 'Archivo', -apple-system, sans-serif;
+            --font-body: 'Inter', -apple-system, sans-serif;
+            --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
+            --bg-page: #F7F6F3;
+            --bg-card: #FFFFFF;
+            --bg-elevated: #EFEDE7;
+            --border-subtle: rgba(20, 19, 15, 0.08);
+            --border-card: rgba(20, 19, 15, 0.14);
+            --shadow-card: 0 1px 2px rgba(20, 19, 15, 0.04), 0 4px 12px rgba(20, 19, 15, 0.06);
+
+            --color-primary: #B45309;       /* amber/ochre — accent, brand, interactive */
+            --color-primary-tint: #FEF3E2;  /* flat wash for hover/active */
+            --color-live: #15803D;          /* deep green — on-time / live vehicle */
+            --color-live-tint: #EAF4EC;
+            --color-warn: #B91C1C;          /* delayed / alert */
+            --color-warn-tint: #FDEAEA;
+
+            --text-main: #1C1917;
+            --text-muted: #6B6459;
+            --text-inv: #FFFFFF;
+
+            --space-1: 4px; --space-2: 8px; --space-3: 16px; --space-4: 24px; --space-5: 32px;
+            --radius-outer: 14px; --radius-inner: 10px; --radius-btn: 10px;
+            --transition: all 0.15s ease-in-out;
+            --header-height: 64px;
+        }
+
+        [data-theme="dark"] {
+            --bg-page: #121110;
+            --bg-card: #1B1917;
+            --bg-elevated: #242220;
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-card: rgba(255, 255, 255, 0.1);
+            --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.45);
+
+            --color-primary: #F59E0B;
+            --color-primary-tint: rgba(245, 158, 11, 0.14);
+            --color-live: #34D399;
+            --color-live-tint: rgba(52, 211, 153, 0.14);
+            --color-warn: #F87171;
+            --color-warn-tint: rgba(248, 113, 113, 0.14);
+
+            --text-main: #F5F3EF;
+            --text-muted: #A39C8F;
+        }
+
+        * { box-sizing: border-box; }
+        *:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+
+        html {
+            position: fixed; width: 100%; height: 100%;
+            overflow: hidden; overscroll-behavior: none;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--bg-page); color: var(--text-main);
+            position: fixed; width: 100%; height: 100%;
+            margin: 0; padding: 0; overflow: hidden;
+            overscroll-behavior: none;
+            display: flex; flex-direction: column;
+            line-height: 1.5;
+        }
+
+        h1, h2, h3, h4, .font-heading { font-family: var(--font-heading); margin: 0; letter-spacing: -0.01em; }
+
+        /* ───── Navbar ───── */
+        .navbar {
+            height: var(--header-height); background: var(--bg-card);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-card);
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0 var(--space-4); z-index: 2000; box-shadow: var(--shadow-card); flex-shrink: 0;
+        }
+        .brand { display: flex; align-items: center; gap: var(--space-2); }
+        .brand i { color: var(--color-primary); width: 26px; height: 26px; }
+        .brand h1 { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+        .header-actions { display: flex; align-items: center; gap: var(--space-2); }
+
+        .icon-btn {
+            background: var(--bg-elevated); border: 1px solid var(--border-card); color: var(--text-muted);
+            cursor: pointer; padding: var(--space-2); border-radius: var(--radius-inner);
+            display: flex; align-items: center; justify-content: center; transition: var(--transition);
+        }
+        .icon-btn:hover { background: var(--bg-card); color: var(--text-main); border-color: var(--color-primary); }
+        .icon-btn:active { transform: scale(0.96); }
+
+        /* City switcher pill in navbar */
+        .city-btn {
+            background: var(--color-primary-tint); border: 1px solid var(--color-primary);
+            color: var(--color-primary); border-radius: 8px;
+            padding: 6px 12px; font-family: var(--font-body); font-weight: 600; font-size: 13px;
+            display: flex; align-items: center; gap: 6px; cursor: pointer; transition: var(--transition);
+        }
+        .city-btn:hover { background: var(--color-primary); color: #fff; transform: translateY(-1px); }
+        .city-btn i { width: 15px; height: 15px; }
+
+        /* ───── Map ───── */
+        .main-content { flex-grow: 1; position: relative; display: flex; }
+        #map { width: 100%; height: 100%; z-index: 1; background: var(--bg-page); }
+        [data-theme="dark"] .leaflet-tile-pane { filter: brightness(0.65) invert(1) contrast(1.15) hue-rotate(180deg); }
+
+        /* Leaflet Controls */
+        .leaflet-bar {
+            border: 1px solid var(--border-card) !important;
+            border-radius: var(--radius-inner) !important;
+            box-shadow: var(--shadow-card) !important;
+            overflow: hidden;
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+        }
+        .leaflet-bar a {
+            background-color: var(--bg-card) !important;
+            color: var(--text-main) !important;
+            border-bottom: 1px solid var(--border-subtle) !important;
+            width: 34px !important; height: 34px !important;
+            line-height: 34px !important; font-size: 15px !important;
+        }
+        .leaflet-bar a:last-child { border-bottom: none !important; }
+        .leaflet-bar a:hover { background-color: var(--bg-elevated) !important; color: var(--color-primary) !important; }
+
+        /* ───── Floating Side Panel ───── */
+        .floating-panel {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: var(--bg-card);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            z-index: 1000;
+            border-radius: var(--radius-outer) var(--radius-outer) 0 0;
+            box-shadow: var(--shadow-card);
+            display: flex; flex-direction: column; max-height: 85dvh; height: 85dvh;
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+            border: 1px solid var(--border-card);
+            overflow: hidden;
+        }
+        .floating-panel.collapsed { transform: translateY(100%); opacity: 0; pointer-events: none; }
+
+        @media (min-width: 768px) {
+            .floating-panel {
+                top: var(--space-4); bottom: var(--space-4); left: var(--space-4); right: auto;
+                width: 390px; height: auto; max-height: none; border-radius: var(--radius-outer);
+            }
+            .floating-panel.collapsed { transform: translateX(-120%); }
+        }
+
+        .panel-toggle-fab {
+            position: absolute; bottom: 36px; left: 50%; transform: translateX(-50%);
+            background: var(--color-primary); color: #fff; border: 1px solid var(--border-card); padding: 12px 24px;
+            border-radius: 8px; font-family: var(--font-body); font-weight: 600; font-size: 14px;
+            display: flex; align-items: center; gap: 8px; box-shadow: var(--shadow-card);
+            cursor: pointer; z-index: 2000; transition: all 0.2s ease;
+            opacity: 1; pointer-events: auto; white-space: nowrap;
+        }
+        .panel-toggle-fab:active { transform: translateX(-50%) scale(0.96); }
+        .panel-toggle-fab.hidden { transform: translateX(-50%) translateY(120px); opacity: 0; pointer-events: none; }
+
+        @media (min-width: 768px) {
+            .panel-toggle-fab { left: 24px; bottom: 24px; transform: none; }
+            .panel-toggle-fab:active { transform: scale(0.96); }
+            .panel-toggle-fab.hidden { transform: translateY(120px); }
+        }
+
+        .panel-header {
+            padding: var(--space-4); background: var(--bg-card);
+            border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; z-index: 10;
+        }
+        .panel-header h2 { font-size: 18px; font-weight: 700; margin-bottom: var(--space-1); }
+        .panel-header p { font-size: 13px; color: var(--text-muted); margin: 0; }
+
+        /* Unified scroll container for WHOLE panel */
+        .panel-scroll-body {
+            flex-grow: 1; overflow-y: auto; overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            display: flex; flex-direction: column;
+        }
+
+        .panel-controls {
+            padding: var(--space-4); border-bottom: 1px solid var(--border-subtle);
+            display: flex; flex-direction: column; gap: var(--space-3); flex-shrink: 0;
+        }
+
+        /* Custom Select */
+        .custom-select-wrapper { position: relative; width: 100%; }
+        .custom-select-wrapper i.select-icon { position: absolute; left: var(--space-3); top: 50%; transform: translateY(-50%); color: var(--text-muted); width: 18px; height: 18px; pointer-events: none; }
+        .custom-select-wrapper i.select-arrow { position: absolute; right: var(--space-3); top: 50%; transform: translateY(-50%); color: var(--text-muted); width: 18px; height: 18px; pointer-events: none; }
+        select {
+            width: 100%; padding: 10px 40px; border: 1px solid var(--border-card);
+            border-radius: 8px; font-size: 14px; font-weight: 500; font-family: var(--font-body);
+            background: var(--bg-elevated); color: var(--text-main); appearance: none; cursor: pointer; transition: var(--transition);
+        }
+        select:focus { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); outline: none; background: var(--bg-card); }
+
+        /* Search Bar */
+        .search-wrapper { position: relative; width: 100%; }
+        .search-wrapper i.search-icon { position: absolute; left: var(--space-3); top: 50%; transform: translateY(-50%); color: var(--text-muted); width: 18px; height: 18px; pointer-events: none; }
+        .search-input {
+            width: 100%; padding: 10px 14px 10px 40px;
+            border: 1px solid var(--border-card); border-radius: 8px;
+            font-size: 14px; font-family: var(--font-body); font-weight: 400;
+            background: var(--bg-elevated); color: var(--text-main); transition: var(--transition);
+        }
+        .search-input::placeholder { color: var(--text-muted); }
+        .search-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); outline: none; background: var(--bg-card); }
+
+        /* Search Dropdown */
+        .search-dropdown {
+            position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+            background: var(--bg-card); border: 1px solid var(--border-card);
+            border-radius: 8px; box-shadow: var(--shadow-card);
+            z-index: 3000; max-height: 220px; overflow-y: auto; display: none;
+        }
+        .search-dropdown.open { display: block; }
+        .search-result-item {
+            padding: 10px var(--space-3); cursor: pointer; transition: var(--transition);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .search-result-item:last-child { border-bottom: none; }
+        .search-result-item:hover { background: var(--bg-elevated); }
+        .search-result-name { font-weight: 600; font-size: 13px; color: var(--text-main); }
+        .search-result-route { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+        .search-no-results { padding: 14px; text-align: center; font-size: 13px; color: var(--text-muted); }
+
+        /* Vehicle Badge */
+        .vehicle-badge {
+            display: none; align-items: center; gap: 8px;
+            background: var(--bg-elevated); border: 1px solid var(--border-card);
+            border-radius: 8px; padding: 8px var(--space-3);
+            font-size: 13px; font-weight: 600; color: var(--text-main);
+        }
+        .vehicle-badge.visible { display: flex; }
+        .vehicle-badge i { width: 16px; height: 16px; color: var(--color-primary); flex-shrink: 0; }
+        .vehicle-plate {
+            margin-left: auto; font-size: 12px; font-weight: 600;
+            background: var(--bg-card); border: 1px solid var(--border-subtle);
+            border-radius: 6px; padding: 2px 8px; letter-spacing: 0.04em;
+            color: var(--text-main); font-family: var(--font-mono);
+            font-feature-settings: "tnum";
+        }
+
+        /* Segmented Toggle */
+        .status-segment { display: flex; background: var(--bg-elevated); border: 1px solid var(--border-card); border-radius: 8px; padding: 3px; gap: 3px; }
+        .segment-item { flex: 1; text-align: center; font-size: 12px; font-weight: 600; padding: 6px var(--space-2); border-radius: 6px; color: var(--text-muted); transition: var(--transition); border: 1px solid transparent; display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .segment-item.active-live { background: var(--color-live-tint); color: var(--color-live); border-color: var(--color-live); }
+        .segment-item.active-sim { background: var(--bg-card); color: var(--text-main); border-color: var(--border-card); }
+        .segment-item i { width: 14px; height: 14px; }
+
+        /* ───── Transit Itinerary / Departure Board Timeline ───── */
+        .panel-content {
+            padding: var(--space-4); padding-bottom: calc(var(--space-4) + 40px);
+            display: flex; flex-direction: column; position: relative;
+        }
+
+        .stop-item {
+            position: relative; padding: 12px var(--space-3) 12px 38px;
+            border: 1px solid var(--border-subtle); border-radius: 8px;
+            margin-bottom: var(--space-2); background: var(--bg-card);
+            display: flex; justify-content: space-between; align-items: center;
+            transition: var(--transition); z-index: 1;
+        }
+
+        /* Thin vertical connector line */
+        .stop-item::before {
+            content: ''; position: absolute; left: 16px; top: -10px; bottom: -10px;
+            width: 2px; background: var(--border-subtle); z-index: 0;
+        }
+        .stop-item:first-child::before { top: 50%; }
+        .stop-item:last-child::before { bottom: 50%; }
+
+        /* Solid timeline dot node */
+        .stop-item::after {
+            content: ''; position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+            width: 10px; height: 10px; border-radius: 50%;
+            background: var(--bg-elevated); border: 2px solid var(--text-muted);
+            z-index: 2; transition: var(--transition);
+        }
+
+        .stop-item.passed { opacity: 0.45; background: var(--bg-page); }
+        .stop-item.passed::after { background: var(--text-muted); border-color: var(--text-muted); }
+
+        .stop-item.next-stop {
+            border-color: var(--color-primary); background: var(--color-primary-tint);
+        }
+        .stop-item.next-stop .stop-name { font-weight: 700; color: var(--text-main); }
+        .stop-item.next-stop::after {
+            background: var(--color-live); border-color: var(--color-live);
+        }
+
+        .stop-item.highlighted {
+            border-color: var(--color-warn); background: var(--color-warn-tint);
+        }
+
+        .stop-name { font-weight: 500; font-size: 14px; color: var(--text-main); }
+
+        /* Flat chip badges with monospaced ETA digits */
+        .eta-badge {
+            background: var(--bg-elevated); color: var(--text-main);
+            border: 1px solid var(--border-card);
+            padding: 3px 10px; border-radius: 6px;
+            font-size: 12px; font-weight: 600;
+            font-family: var(--font-mono); font-feature-settings: "tnum";
+            display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+        }
+        .eta-badge.live-badge {
+            background: var(--color-live-tint); color: var(--color-live); border-color: var(--color-live);
+        }
+        .eta-badge.passed-badge {
+            background: transparent; color: var(--text-muted); border-color: var(--border-subtle);
+        }
+        .badge-dot {
+            width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block;
+        }
+
+        @keyframes skeleton-pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        .skeleton { background: var(--border-subtle); border-radius: 8px; animation: skeleton-pulse 1.5s infinite ease-in-out; }
+        .skeleton-input { height: 44px; width: 100%; }
+        .skeleton-box { height: 52px; margin-bottom: var(--space-2); width: 100%; border-radius: 8px; }
+
+        /* Map Popups */
+        .leaflet-popup-content-wrapper {
+            background: var(--bg-card); color: var(--text-main);
+            border: 1px solid var(--border-card); border-radius: 8px;
+            font-family: var(--font-body); font-size: 13px; font-weight: 600;
+            box-shadow: var(--shadow-card);
+        }
+        .leaflet-popup-tip { background: var(--bg-card); border-color: var(--border-card); }
+
+        /* Bus Marker — solid badge with clean SVG */
+        .marker-bus {
+            width: 36px; height: 36px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25); border: 2px solid #FFFFFF;
+            background: var(--color-primary); position: relative; z-index: 2;
+        }
+        .marker-bus.live-bus { background: var(--color-live); }
+
+        .live-pulse-ring {
+            position: absolute; left: -6px; top: -6px; right: -6px; bottom: -6px;
+            border-radius: 50%; border: 2px solid var(--color-live);
+            animation: clean-ring-pulse 2s cubic-bezier(0.4, 0, 0.2, 1) infinite; z-index: 1;
+        }
+        @keyframes clean-ring-pulse { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(1.5); opacity: 0; } }
+
+        /* ───── City Modal ───── */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+            z-index: 9000; display: flex; align-items: center; justify-content: center;
+            padding: var(--space-4); transition: opacity 0.2s ease;
+        }
+        .modal-overlay.hidden { opacity: 0; pointer-events: none; }
+        .modal-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-card); border-radius: 14px; box-shadow: var(--shadow-card);
+            padding: var(--space-5); width: 100%; max-width: 420px;
+            animation: modal-in 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        @keyframes modal-in { from { transform: scale(0.94) translateY(12px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+        .modal-title { font-size: 22px; font-weight: 800; margin-bottom: var(--space-1); }
+        .modal-subtitle { font-size: 13px; color: var(--text-muted); margin-bottom: var(--space-4); }
+
+        .city-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+        .city-option {
+            border: 1px solid var(--border-card); border-radius: 8px;
+            padding: 12px var(--space-3); cursor: pointer; transition: var(--transition);
+            text-align: left; background: var(--bg-elevated); font-family: var(--font-body);
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        .city-option:hover {
+            border-color: var(--color-primary); background: var(--color-primary-tint);
+            transform: translateY(-2px); box-shadow: var(--shadow-card);
+        }
+        .city-option.selected { border-color: var(--color-primary); background: var(--color-primary-tint); box-shadow: 0 0 0 1px var(--color-primary); }
+        .city-option-name { font-weight: 700; font-size: 15px; color: var(--text-main); font-family: var(--font-heading); }
+        .city-option-state { font-size: 12px; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+
+    <!-- ───── City Selection Modal ───── -->
+    <div id="cityModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-card">
+            <h2 class="modal-title font-heading" id="modalTitle">📍 Select your city</h2>
+            <p class="modal-subtitle">Choose the city you want to track buses in. You can change this anytime.</p>
+            <div class="city-grid" id="cityGrid">
+                <!-- populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ───── Navbar ───── -->
+    <header class="navbar">
+        <div class="brand">
+            <i data-lucide="bus-front"></i>
+            <h1>SmartBus</h1>
+        </div>
+        <div class="header-actions">
+            <button id="citySwitcherBtn" class="city-btn" aria-label="Switch city">
+                <i data-lucide="map-pin"></i>
+                <span id="citySwitcherLabel">Select City</span>
+            </button>
+            <button id="themeToggle" class="icon-btn" aria-label="Toggle Theme">
+                <i data-lucide="moon"></i>
+            </button>
+        </div>
+    </header>
+
+    <div class="main-content">
+        <div id="map"></div>
+
+        <button id="openPanelBtn" class="panel-toggle-fab hidden">
+            <i data-lucide="list"></i> <span>Show Routes</span>
+        </button>
+
+        <div id="side-panel" class="floating-panel">
+            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <h2 class="font-heading">Track your bus</h2>
+                    <p id="panelSubtitle">Select a route to view real-time arrivals</p>
+                </div>
+                <button id="closePanelBtn" class="icon-btn" style="margin-top: -4px; margin-right: -4px;" aria-label="Close Panel">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+
+            <div class="panel-scroll-body" id="panelScrollBody">
+                <div class="panel-controls">
+
+                    <!-- Stop Search Bar -->
+                    <div class="search-wrapper" id="stop-search-container" style="display:none;">
+                        <i data-lucide="search" class="search-icon"></i>
+                        <input type="text" id="stopSearchInput" class="search-input" placeholder="Search any bus stop or landmark..." autocomplete="off" />
+                        <div id="searchDropdown" class="search-dropdown"></div>
+                    </div>
+
+                    <!-- Route Selector -->
+                    <div id="route-selector-container">
+                        <div class="skeleton skeleton-input" id="route-selector-skeleton"></div>
+                        <div class="custom-select-wrapper" id="route-controls" style="display: none;">
+                            <i data-lucide="route" class="select-icon"></i>
+                            <select id="route-selector">
+                                <option value="" disabled selected>Select Active Route</option>
+                            </select>
+                            <i data-lucide="chevron-down" class="select-arrow"></i>
+                        </div>
+                    </div>
+
+                    <!-- Vehicle Badge -->
+                    <div id="vehicleBadge" class="vehicle-badge">
+                        <i data-lucide="bus"></i>
+                        <span id="vehicleText">Bus --</span>
+                        <span id="vehiclePlate" class="vehicle-plate">--</span>
+                    </div>
+
+                    <div class="status-segment" id="telemetry-segment">
+                        <div class="segment-item active-sim" id="seg-sim"><i data-lucide="radio"></i> SIMULATED</div>
+                        <div class="segment-item" id="seg-live"><i data-lucide="satellite"></i> LIVE GPS</div>
+                    </div>
+                </div>
+
+                <div class="panel-content" id="eta-list">
+                    <div class="skeleton skeleton-box"></div>
+                    <div class="skeleton skeleton-box"></div>
+                    <div class="skeleton skeleton-box"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script>
+        lucide.createIcons();
+
+        /* ═══════════════════════════════════════════
+           CITY CONFIGURATION
+        ═══════════════════════════════════════════ */
+        const CITIES = {
+            indore:   { name: 'Indore',   state: 'Madhya Pradesh', lat: 22.7196, lng: 75.8577, zoom: 13 },
+            bhopal:   { name: 'Bhopal',   state: 'Madhya Pradesh', lat: 23.2599, lng: 77.4126, zoom: 13 },
+            ujjain:   { name: 'Ujjain',   state: 'Madhya Pradesh', lat: 23.1765, lng: 75.7885, zoom: 13 },
+            jabalpur: { name: 'Jabalpur', state: 'Madhya Pradesh', lat: 23.1815, lng: 79.9864, zoom: 13 },
+        };
+
+        let activeCityId = null;
+
+        /* ─── City Modal ─── */
+        const cityModal = document.getElementById('cityModal');
+        const cityGrid  = document.getElementById('cityGrid');
+        const citySwitcherBtn   = document.getElementById('citySwitcherBtn');
+        const citySwitcherLabel = document.getElementById('citySwitcherLabel');
+
+        function buildCityGrid(currentId) {
+            cityGrid.innerHTML = '';
+            Object.entries(CITIES).forEach(([id, city]) => {
+                const btn = document.createElement('button');
+                btn.className = 'city-option' + (id === currentId ? ' selected' : '');
+                btn.innerHTML = `<span class="city-option-name">${city.name}</span><span class="city-option-state">${city.state}</span>`;
+                btn.addEventListener('click', () => selectCity(id));
+                cityGrid.appendChild(btn);
+            });
+        }
+
+        function openCityModal() {
+            buildCityGrid(activeCityId);
+            cityModal.classList.remove('hidden');
+        }
+
+        function closeCityModal() {
+            cityModal.classList.add('hidden');
+        }
+
+        function selectCity(cityId) {
+            activeCityId = cityId;
+            localStorage.setItem('smartbus-city', cityId);
+            const city = CITIES[cityId];
+            citySwitcherLabel.textContent = city.name;
+            closeCityModal();
+
+            // Fly map to city
+            map.flyTo([city.lat, city.lng], city.zoom, { duration: 1.2 });
+
+            // Filter routes for city
+            filterRoutesForCity(cityId);
+
+            document.getElementById('panelSubtitle').textContent = `Routes in ${city.name}`;
+        }
+
+        citySwitcherBtn.addEventListener('click', openCityModal);
+
+        // Close on backdrop click
+        cityModal.addEventListener('click', (e) => {
+            if (e.target === cityModal) closeCityModal();
+        });
+
+        /* ─── Panel Toggle ─── */
+        const panel        = document.getElementById('side-panel');
+        const closePanelBtn = document.getElementById('closePanelBtn');
+        const openPanelBtn  = document.getElementById('openPanelBtn');
+
+        closePanelBtn.addEventListener('click', () => {
+            panel.classList.add('collapsed');
+            openPanelBtn.classList.remove('hidden');
+        });
+        openPanelBtn.addEventListener('click', () => {
+            panel.classList.remove('collapsed');
+            openPanelBtn.classList.add('hidden');
+        });
+
+        /* ─── Theme Toggle ─── */
+        const themeToggle = document.getElementById('themeToggle');
+        function updateThemeIcon(theme) {
+            themeToggle.innerHTML = theme === 'dark' ? '<i data-lucide="sun"></i>' : '<i data-lucide="moon"></i>';
+            lucide.createIcons();
+        }
+        updateThemeIcon(document.documentElement.getAttribute('data-theme'));
+        themeToggle.addEventListener('click', () => {
+            const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('smartbus-theme', theme);
+            updateThemeIcon(theme);
+            // Dynamic update of route polyline color based on theme
+            if (activeRouteId) renderRoute(activeRouteId);
+        });
+
+        /* ═══════════════════════════════════════════
+           LEAFLET MAP
+        ═══════════════════════════════════════════ */
+        const map = L.map('map', { zoomControl: false }).setView([22.7196, 75.8577], 12);
+        L.control.zoom({ position: 'topright' }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        /* ═══════════════════════════════════════════
+           SOCKET & ROUTE STATE
+        ═══════════════════════════════════════════ */
+        const socket = io();
+        let routesData  = [];   // all routes from server
+        let activeRouteId = null;
+
+        let busMarker;
+        let routePolyline;
+        const stopMarkers = []; // parallel array to route.stops
+
+        const routeSelector  = document.getElementById('route-selector');
+        const routeSkeleton  = document.getElementById('route-selector-skeleton');
+        const routeControls  = document.getElementById('route-controls');
+        const etaList        = document.getElementById('eta-list');
+        const segSim         = document.getElementById('seg-sim');
+        const segLive        = document.getElementById('seg-live');
+        const stopSearchContainer = document.getElementById('stop-search-container');
+        const stopSearchInput     = document.getElementById('stopSearchInput');
+        const searchDropdown      = document.getElementById('searchDropdown');
+        const vehicleBadge        = document.getElementById('vehicleBadge');
+        const vehicleText         = document.getElementById('vehicleText');
+        const vehiclePlate        = document.getElementById('vehiclePlate');
+
+        function updateVehicleBadge(busNo, plateNo) {
+            if (busNo) {
+                vehicleText.textContent = `Bus ${busNo}`;
+                vehiclePlate.textContent = plateNo || '--';
+                vehicleBadge.classList.add('visible');
+                lucide.createIcons();
+            } else {
+                vehicleBadge.classList.remove('visible');
+            }
+        }
+
+        function getBusIcon(isLive) {
+            const pulseNode = isLive ? '<div class="live-pulse-ring"></div>' : '';
+            const liveClass = isLive ? 'live-bus' : '';
+            const busSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/></svg>`;
+            const iconHtml = `${pulseNode}<div class="marker-bus ${liveClass}">${busSvg}</div>`;
+            return L.divIcon({ html: iconHtml, className: '', iconSize: [36, 36], iconAnchor: [18, 18] });
+        }
+
+        /* ─── Filter routes dropdown by city ─── */
+        function filterRoutesForCity(cityId) {
+            const cityRoutes = routesData.filter(r => r.cityId === cityId);
+
+            // Reset current route display
+            activeRouteId = null;
+            if (routePolyline) { map.removeLayer(routePolyline); routePolyline = null; }
+            stopMarkers.forEach(m => map.removeLayer(m));
+            stopMarkers.length = 0;
+            if (busMarker) { map.removeLayer(busMarker); busMarker = null; }
+            updateVehicleBadge(null);
+
+            etaList.innerHTML = '<div style="padding:32px; text-align:center; color:var(--text-muted);"><i data-lucide="map" style="width:40px;height:40px;opacity:0.4;margin-bottom:12px;"></i><p>Select a route to view arrivals</p></div>';
+            lucide.createIcons();
+
+            routeSelector.innerHTML = '<option value="" disabled selected>Select Active Route</option>';
+            if (cityRoutes.length === 0) {
+                const opt = document.createElement('option');
+                opt.disabled = true;
+                opt.textContent = 'No routes available for this city yet';
+                routeSelector.appendChild(opt);
+            } else {
+                cityRoutes.forEach(route => {
+                    const opt = document.createElement('option');
+                    opt.value = route.id;
+                    opt.textContent = `${route.id}: ${route.name}`;
+                    routeSelector.appendChild(opt);
+                });
+            }
+            segSim.className = 'segment-item active-sim';
+            segLive.className = 'segment-item';
+        }
+
+        /* ─── Socket initData ─── */
+        socket.on('initData', (data) => {
+            routesData = data;
+            routeSkeleton.style.display = 'none';
+            routeControls.style.display = 'block';
+            stopSearchContainer.style.display = 'block';
+            lucide.createIcons();
+
+            // Check localStorage for saved city
+            const savedCity = localStorage.getItem('smartbus-city');
+            if (savedCity && CITIES[savedCity]) {
+                selectCity(savedCity);
+            } else {
+                openCityModal();
+            }
+        });
+
+        /* ─── Route Selector ─── */
+        routeSelector.addEventListener('change', (e) => {
+            activeRouteId = e.target.value;
+            renderRoute(activeRouteId);
+        });
+
+        function renderRoute(routeId, highlightStopId = null) {
+            const route = routesData.find(r => r.id === routeId);
+            if (!route) return;
+
+            if (routePolyline) map.removeLayer(routePolyline);
+            stopMarkers.forEach(m => map.removeLayer(m));
+            stopMarkers.length = 0;
+
+            const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim();
+            const styleSurface = getComputedStyle(document.documentElement).getPropertyValue('--bg-card').trim();
+
+            routePolyline = L.polyline(route.routePath.map(p => [p.lat, p.lng]), { color: primaryColor, weight: 5, opacity: 0.9 }).addTo(map);
+
+            route.stops.forEach((s, index) => {
+                const isStartOrEnd = index === 0 || index === route.stops.length - 1;
+                const marker = L.circleMarker([s.lat, s.lng], {
+                    radius: isStartOrEnd ? 6 : 4,
+                    fillColor: styleSurface,
+                    color: primaryColor,
+                    weight: 2.5, opacity: 1, fillOpacity: 1
+                }).addTo(map);
+                marker.bindPopup(`<b>${s.name}</b>`, { autoPan: false });
+                marker.on('click', () => map.panTo([s.lat, s.lng], { animate: true }));
+                stopMarkers.push(marker);
+            });
+
+            if (busMarker) busMarker.setIcon(getBusIcon(false));
+
+            updateVehicleBadge(route.busNo, route.plateNo);
+
+            if (highlightStopId) {
+                const stopIdx = route.stops.findIndex(s => s.id === highlightStopId);
+                if (stopIdx !== -1) {
+                    const sm = stopMarkers[stopIdx];
+                    map.panTo([route.stops[stopIdx].lat, route.stops[stopIdx].lng], { animate: true });
+                    setTimeout(() => sm.openPopup(), 300);
+                }
+            } else {
+                map.fitBounds(routePolyline.getBounds(), { padding: [40, 40] });
+            }
+
+            etaList.innerHTML = '<div style="padding:32px; text-align:center; color:var(--text-muted);"><i data-lucide="loader" style="margin-bottom:12px;"></i><p>Locating transit vehicle...</p></div>';
+            segSim.className = 'segment-item active-sim';
+            segLive.className = 'segment-item';
+            lucide.createIcons();
+        }
+
+        /* ═══════════════════════════════════════════
+           STOP SEARCH
+        ═══════════════════════════════════════════ */
+        stopSearchInput.addEventListener('input', () => {
+            const query = stopSearchInput.value.trim().toLowerCase();
+            searchDropdown.innerHTML = '';
+
+            if (!query || !activeCityId) {
+                searchDropdown.classList.remove('open');
+                return;
+            }
+
+            const cityRoutes = routesData.filter(r => r.cityId === activeCityId);
+            const results = [];
+
+            cityRoutes.forEach(route => {
+                route.stops.forEach(stop => {
+                    if (stop.name.toLowerCase().includes(query)) {
+                        results.push({ stop, route });
+                    }
+                });
+            });
+
+            if (results.length === 0) {
+                searchDropdown.innerHTML = '<div class="search-no-results">No stops found matching your search.</div>';
+            } else {
+                results.slice(0, 8).forEach(({ stop, route }) => {
+                    const item = document.createElement('div');
+                    item.className = 'search-result-item';
+                    item.innerHTML = `
+                        <div class="search-result-name">${stop.name}</div>
+                        <div class="search-result-route">Serviced by: ${route.name}</div>
+                    `;
+                    item.addEventListener('click', () => {
+                        selectSearchResult(route.id, stop.id, stop.name);
+                    });
+                    searchDropdown.appendChild(item);
+                });
+            }
+
+            searchDropdown.classList.add('open');
+        });
+
+        function selectSearchResult(routeId, stopId, stopName) {
+            searchDropdown.classList.remove('open');
+            stopSearchInput.value = stopName;
+
+            routeSelector.value = routeId;
+            activeRouteId = routeId;
+
+            renderRoute(routeId, stopId);
+            pendingHighlightStopName = stopName;
+        }
+
+        let pendingHighlightStopName = null;
+
+        document.addEventListener('click', (e) => {
+            if (!stopSearchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
+                searchDropdown.classList.remove('open');
+            }
+        });
+
+        /* ═══════════════════════════════════════════
+           BUS UPDATES
+        ═══════════════════════════════════════════ */
+        socket.on('busUpdates', (updates) => {
+            if (!activeRouteId) return;
+            const update = updates.find(u => u.routeId === activeRouteId);
+            if (!update) return;
+
+            const telemetryLabel = update.isLive
+                ? `<span style="color:var(--color-live);font-weight:700;">● LIVE GPS</span>`
+                : `<span style="color:var(--text-muted);font-weight:600;">◎ SIMULATED</span>`;
+            const busPopupHtml = `
+                <div style="font-family:var(--font-body);min-width:140px;">
+                    <div style="font-family:var(--font-heading);font-size:15px;font-weight:700;margin-bottom:4px;">Bus ${update.busNo || '--'}</div>
+                    <div style="font-size:12px;font-family:var(--font-mono);color:var(--text-muted);margin-bottom:6px;">REG: ${update.plateNo || '--'}</div>
+                    <div style="font-size:12px;">${telemetryLabel}</div>
+                </div>`;
+
+            if (!busMarker) {
+                busMarker = L.marker([update.position.lat, update.position.lng], {
+                    icon: getBusIcon(update.isLive), zIndexOffset: 1000
+                }).addTo(map);
+                busMarker.bindPopup(busPopupHtml, { autoPan: false });
+                busMarker.on('click', () => map.panTo(busMarker.getLatLng(), { animate: true }));
+            } else {
+                busMarker.setLatLng([update.position.lat, update.position.lng]);
+                busMarker.setIcon(getBusIcon(update.isLive));
+                busMarker.setPopupContent(busPopupHtml);
+            }
+
+            if (update.busNo) updateVehicleBadge(update.busNo, update.plateNo);
+
+            if (update.isLive) {
+                segLive.className = 'segment-item active-live';
+                segSim.className = 'segment-item';
+            } else {
+                segSim.className = 'segment-item active-sim';
+                segLive.className = 'segment-item';
+            }
+
+            etaList.innerHTML = '';
+            let firstNextStopFound = false;
+
+            update.etas.forEach((eta) => {
+                const div = document.createElement('div');
+                let isPassed = eta.etaMin === -1;
+                let isNext = false;
+
+                if (!isPassed && !firstNextStopFound) {
+                    isNext = true;
+                    firstNextStopFound = true;
+                }
+
+                const isHighlighted = pendingHighlightStopName && eta.name === pendingHighlightStopName;
+                div.className = `stop-item ${isPassed ? 'passed' : ''} ${isNext ? 'next-stop' : ''} ${isHighlighted ? 'highlighted' : ''}`;
+                if (isHighlighted) {
+                    pendingHighlightStopName = null;
+                    setTimeout(() => {
+                        const scrollBody = document.getElementById('panelScrollBody');
+                        if (scrollBody && div) {
+                            const containerRect = scrollBody.getBoundingClientRect();
+                            const divRect = div.getBoundingClientRect();
+                            const relativeTop = divRect.top - containerRect.top;
+                            const targetScrollTop = scrollBody.scrollTop + relativeTop - (containerRect.height / 2) + (divRect.height / 2);
+                            scrollBody.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' });
+                        }
+                    }, 100);
+                }
+
+                let rightContent = '';
+                if (isPassed) {
+                    rightContent = `<div class="eta-badge passed-badge"><span class="badge-dot"></span> PASSED</div>`;
+                } else if (eta.etaMin === 0) {
+                    rightContent = `<div class="eta-badge live-badge"><span class="badge-dot"></span> ARRIVING</div>`;
+                } else {
+                    rightContent = `<div class="eta-badge ${isNext && update.isLive ? 'live-badge' : ''}"><span class="badge-dot"></span> ${eta.etaMin} MIN</div>`;
+                }
+
+                div.innerHTML = `<div class="stop-name">${eta.name}</div>${rightContent}`;
+                etaList.appendChild(div);
+            });
+
+            lucide.createIcons();
+        });
+
+        window.addEventListener('scroll', () => {
+            if (window.scrollY !== 0 || window.scrollX !== 0) {
+                window.scrollTo(0, 0);
+            }
+        });
+    </script>
+</body>
+</html>
